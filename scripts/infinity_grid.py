@@ -113,6 +113,20 @@ def apply_enable_hr(p, v):
 def apply_styles(p, v: str):
     p.styles = list(v.split(','))
 
+def parse_multi_axes_unified(input: str):
+    delimiter = "||" if "||" in input else ","
+    import lark
+    parser = lark.Lark(rf"""
+    start: (listfirst | ELEM) ("{delimiter}" [listfirst | ELEM])*
+    listfirst: "<<" [[list | ELEM] ("{delimiter}" [list | ELEM])*] ">>"
+    list: "<<" [(list | ELEM) ("{delimiter}" (list | ELEM))*] ">>"
+    ELEM: /([^{delimiter}<>]|\|(?!\|)|\<(?!\<)|\>(?!\>))+/
+    """, maybe_placeholders=True)
+    pass
+
+def apply_multi_axes_unified(p:processing.StableDiffusionProcessing, v:list[list|str]):
+    pass
+
 ######################### Addons #########################
 has_inited = False
 
@@ -166,6 +180,7 @@ def try_init():
     registerMode("HighRes Upscaler", GridSettingMode(dry=True, type="text", apply=apply_field("hr_upscaler"), valid_list=lambda: list(map(lambda u: u.name, shared.sd_upscalers)) + list(shared.latent_upscale_modes.keys())))
     registerMode("Image CFG Scale", GridSettingMode(dry=True, type="decimal", min=0, max=500, apply=apply_field("image_cfg_scale")))
     registerMode("Use Result Index", GridSettingMode(dry=True, type="integer", min=0, max=500, apply=apply_field("inf_grid_use_result_index")))
+    registerMode("Multi Axes Unified", GridSettingMode(dry=False, type="raw string", apply=apply_multi_axes_unified, parse_list=parse_multi_axes_unified))
     try:
         script_list = [x for x in scripts.scripts_data if x.script_class.__module__ == "dynamic_thresholding.py"][:1]
         if len(script_list) == 1:

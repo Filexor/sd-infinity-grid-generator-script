@@ -150,7 +150,7 @@ class GridSettingMode:
     """
     Defines a custom parameter input mode for an Infinity Grid Generator.
     'dry' is True if the mode should be processed in dry runs, or False if it should be skipped.
-    'type' is 'text', 'integer', 'decimal', or 'boolean'
+    'type' is 'text', 'integer', 'decimal', 'boolean' or 'raw string' (parse_list will takes a str instead of list[str])
     'apply' is a function to call taking (passthroughObject, value)
     'min' is for integer/decimal type, optional minimum value
     'max' is for integer/decimal type, optional maximum value
@@ -276,16 +276,19 @@ class AxisValue:
 
 class Axis:
     def build_from_list_str(self, id, grid, list_str):
-        is_split_by_double_pipe = "||" in list_str
-        values_list = list_str.split("||" if is_split_by_double_pipe else ",")
-        self.mode_name = clean_name(str(id))
-        self.mode = valid_modes.get(clean_mode(self.mode_name))
-        if self.mode is None:
-            raise RuntimeError(f"Invalid axis mode '{self.mode}' from '{id}': unknown mode")
-        if self.mode.type == "integer":
-            values_list = expand_numeric_list_ranges(values_list, int)
-        elif self.mode.type == "decimal":
-            values_list = expand_numeric_list_ranges(values_list, float)
+        if self.mode.type == "raw string":
+            values_list = self.mode.parse_list(list_str)
+        else:
+            is_split_by_double_pipe = "||" in list_str
+            values_list = list_str.split("||" if is_split_by_double_pipe else ",")
+            self.mode_name = clean_name(str(id))
+            self.mode = valid_modes.get(clean_mode(self.mode_name))
+            if self.mode is None:
+                raise RuntimeError(f"Invalid axis mode '{self.mode}' from '{id}': unknown mode")
+            if self.mode.type == "integer":
+                values_list = expand_numeric_list_ranges(values_list, int)
+            elif self.mode.type == "decimal":
+                values_list = expand_numeric_list_ranges(values_list, float)
         index = 0
         if self.mode.parse_list is not None:
             values_list = self.mode.parse_list(values_list)
