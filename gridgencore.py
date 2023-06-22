@@ -269,7 +269,7 @@ class AxisValue:
         self.params = list()
         if type == "unifiedaxes":
             self.title = self.key
-            self.params = {self.key: val}
+            self.params = {val[0]: val[1:]}
             self.description = flatten_axis_names(val[1])
             self.skip = False
             self.show = True
@@ -308,7 +308,7 @@ class Axis:
             axes_list, values_list = self.mode.parse_list(list_str)
             self.description = flatten_axis_names(axes_list)
             for i, value in enumerate(values_list, 1):
-                self.values.append(AxisValue(self, grid, str(i), (axes_list, value), "unifiedaxes"))
+                self.values.append(AxisValue(self, grid, str(i), (id, axes_list, value), "unifiedaxes"))
                 self.values[-1]
                 pass
             pass
