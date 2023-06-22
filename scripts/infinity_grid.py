@@ -113,18 +113,156 @@ def apply_enable_hr(p, v):
 def apply_styles(p, v: str):
     p.styles = list(v.split(','))
 
-def parse_multi_axes_unified(input: str):
+def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]], list[list[str]]]:
     delimiter = "||" if "||" in input else ","
+
     import lark
     parser = lark.Lark(rf"""
-    start: (listfirst | ELEM) ("{delimiter}" [listfirst | ELEM])*
-    listfirst: "<<" [[list | ELEM] ("{delimiter}" [list | ELEM])*] ">>"
-    list: "<<" [(list | ELEM) ("{delimiter}" (list | ELEM))*] ">>"
-    ELEM: /([^{delimiter}<>]|\|(?!\|)|\<(?!\<)|\>(?!\>))+/
+    start: (list_type | list_type_with_arg | elem) ("{delimiter}" [list_root | elem])*
+    list_type: [SPACE] "<<" [(list_type_with_arg | elem) ("{delimiter}" [list_type_with_arg | elem])*] ">>" [SPACE]
+    list_type_with_arg: [SPACE] elem "<<" [(list_type | list_type_with_arg | elem) ("{delimiter}" [list_type | list_type_with_arg | elem])*] ">>" [SPACE]
+    list_root: [SPACE] "<<" [(list | elem) ("{delimiter}" [list | elem])*] ">>" [SPACE]
+    list: [SPACE] "<<" [(list | elem) ("{delimiter}" [list | elem])*] ">>" [SPACE]
+    elem: ELEM
+    ELEM: /([^{delimiter if delimiter == "," else ""}<>]|\|(?!\|)|\<(?!\<)|\>(?!\>))+/
+    SPACE: /\s/+
+    %ignore SPACE
     """, maybe_placeholders=True)
+    class transformer(lark.visitors.Transformer):
+        @lark.visitors.v_args(tree = True)
+        def list_type(self, tree: lark.tree.Tree) -> lark.tree.Tree:
+            return lark.tree.Tree(tree.data, tree.children[1:-1], tree.meta)
+            pass
+        @lark.visitors.v_args(tree = True)
+        def list_type_with_arg(self, tree: lark.tree.Tree) -> lark.tree.Tree:
+            return lark.tree.Tree(tree.data, [tree.children[1]] + tree.children[2:-1], tree.meta)
+            pass
+        @lark.visitors.v_args(tree = True)
+        def list_root(self, tree: lark.tree.Tree) -> str | lark.tree.Tree:
+            return lark.tree.Tree(tree.data, tree.children[1:-1:2], tree.meta)
+            pass
+        @lark.visitors.v_args(tree = True)
+        def list(self, args: list[str]) -> str:
+            return lark.tree.Tree(tree.data, tree.children[1:-1:2], tree.meta)
+            pass
+        pass
+
+    def pop(_obj: lark.tree.Tree) -> lark.tree.Tree | str | None:
+        if len(_obj.children) > 0:
+            return pop(_obj.children.pop(0))
+            pass
+        else:
+            return None
+            pass
+        pass
+
+    def visit1(ia: lark.tree.Tree | str, iv: lark.tree.Tree | str, oa: list, ov: list) -> tuple[list | str | None, list | str | None]:
+        'Fill oa(output_axes) and construct ov(output_value) from ia(0th child of tree). Unused arg of ia goes to ov.'
+        if ia.data == "elem":
+            if clean_name(ia) in [clean_name("Unified Axes")]:
+                if iv is None:
+                    return (oa.append(None), ov.append([]))
+                    pass
+                _arg = pop(iv)
+                if isinstance(_arg, str):   # iv is elem
+                    return (oa.append(_arg), ov.append([]))
+                    pass
+                _oa = []
+                _ov = []
+                for i, j in zip(_arg.children, iv.children):
+                    _oa, _ov = visit1(i, j, _oa, _ov, None)
+                    pass
+                return (oa.append(_oa), ov.append(_ov))
+                pass
+            else:
+                return (oa.append(ia), ov.append([]))
+                pass
+            pass
+        elif ia.data == "list_type_with_arg":
+            if clean_name(ia.children[0]) in [clean_name("Unified Axes")]:
+                if len(ia.children) == 0:
+                    return (oa.append(None), ov.append([]))
+                    pass
+                _output_axes = []
+                _output = []
+                for child in ia.children[1:]:
+                    _output_axes, _output = visit1(child, _output_axes, _output)
+                    pass
+                return (oa.append(_output_axes), ov.append(_output))
+                pass
+            else:
+                ov.insert(ia.children[1:])
+                return (oa.append(ia.children[0]), ov)
+                pass
+            pass
+        else:
+            _output_axes = []
+            _output = []
+            for child in ia.children:
+                _output_axes, _output = visit1(child, _output_axes, _output)
+                pass
+            return (oa.append(_output_axes), ov.append(_output))
+            pass
+        pass
+    def visit2(iv: lark.tree.Tree, ov: list[list] | list[str]) -> None:
+        'Construct value list. Uses bc(broadcast) if value is elem instead of list.'
+        if iv.data == "elem":
+            if isinstance(getattr(ov, "0", ""), str):
+                ov.append(iv.children[0])
+                pass
+            else:
+                for _ov in ov:
+                    visit2(iv, _ov)
+                    pass
+                pass
+            pass
+        else: # iv.data == "list"
+            for _iv, _ov in zip(iv.children, ov):
+                if isinstance(getattr(ov, "0", ""), str):
+                    ov.append(iv.children[0])
+                    pass
+                else:
+                    visit2(_iv, _ov)
+                    pass
+                pass
+            pass
+        pass
+    def flatten(_obj: list[list | str]) -> None:
+        i = 0
+        while len(_obj) > i:
+            if isinstance(_obj[i], list):
+                tmp = _obj[i]
+                del _obj[i]
+                _obj.insert(i, tmp)
+                pass
+            else:
+                i += 1
+                pass
+            pass
+        pass
+
+    try:
+        tree: lark.tree.Tree = transformer().transform(parser.parse(input))
+        output_axes = []
+        output = []
+        output_axes, output = visit1(tree.children[0], tree.children[1:], output_axes, output)
+        for child in tree.children[1:]:
+            visit2(child, output)
+            pass
+        flatten(output_axes)
+        flatten(output)
+        pass
+    except Exception as e:
+        print(repr(e))
+        raise RuntimeError("Likely syntax error")
+        pass
+    return (output_axes, output)
     pass
 
-def apply_multi_axes_unified(p:processing.StableDiffusionProcessing, v:list[list|str]):
+def apply_multi_axes_unified(p:processing.StableDiffusionProcessing, v:tuple[list[str], list[str]]):
+    for mode, value in zip(v[0], v[1]):
+        core.valid_modes[clean_name(mode)].apply(p, value)
+        pass
     pass
 
 ######################### Addons #########################
@@ -180,7 +318,7 @@ def try_init():
     registerMode("HighRes Upscaler", GridSettingMode(dry=True, type="text", apply=apply_field("hr_upscaler"), valid_list=lambda: list(map(lambda u: u.name, shared.sd_upscalers)) + list(shared.latent_upscale_modes.keys())))
     registerMode("Image CFG Scale", GridSettingMode(dry=True, type="decimal", min=0, max=500, apply=apply_field("image_cfg_scale")))
     registerMode("Use Result Index", GridSettingMode(dry=True, type="integer", min=0, max=500, apply=apply_field("inf_grid_use_result_index")))
-    registerMode("Multi Axes Unified", GridSettingMode(dry=False, type="raw string", apply=apply_multi_axes_unified, parse_list=parse_multi_axes_unified))
+    registerMode("Unified Axes", GridSettingMode(dry=False, type="unifiedaxes", apply=apply_multi_axes_unified, parse_list=parse_multi_axes_unified))
     try:
         script_list = [x for x in scripts.scripts_data if x.script_class.__module__ == "dynamic_thresholding.py"][:1]
         if len(script_list) == 1:

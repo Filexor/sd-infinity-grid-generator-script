@@ -144,19 +144,39 @@ def expand_numeric_list_ranges(in_list, num_type):
             out_list.append(num_type(raw_val))
     return out_list
 
+def flatten_axis_names(axes: list) -> str:
+    output = []
+    for item in axes:
+        if isinstance(item, str):
+            output.append(item)
+            pass
+        else:
+            output.append("<<")
+            output.append(flatten_axis_names(item))
+            output.append(">>")
+            pass
+        output.append("||")
+        pass
+    if output[-1] == "||":
+        output.pop()
+        pass
+    return "".join(output)
+    pass
+
 ######################### Value Modes #########################
 
 class GridSettingMode:
     """
     Defines a custom parameter input mode for an Infinity Grid Generator.
     'dry' is True if the mode should be processed in dry runs, or False if it should be skipped.
-    'type' is 'text', 'integer', 'decimal', 'boolean' or 'raw string' (parse_list will takes a str instead of list[str])
+    'type' is 'text', 'integer', 'decimal', 'boolean' or 'unifiedaxes' (parse_list will takes a str for processing)
     'apply' is a function to call taking (passthroughObject, value)
     'min' is for integer/decimal type, optional minimum value
     'max' is for integer/decimal type, optional maximum value
     'valid_list' is for text type, an optional lambda that returns a list of valid values
     'clean' is an optional function to call that takes (passthroughObject, value) and returns a cleaned copy of the value, or raises an error if invalid
     'parse_list' is an optional function to call that takes a List and returns a List, to apply any special pre-processing for list-format inputs.
+    'special_first_value' is True if first value has use for the mode specific purpose.
     """
     def __init__(self, dry: bool, type: str, apply: callable, min: float = None, max: float = None, valid_list: callable = None, clean: callable = None, parse_list: callable = None):
         self.dry = dry
@@ -241,13 +261,19 @@ def validate_single_param(p: str, v):
 ######################### YAML Parsing and Processing #########################
 
 class AxisValue:
-    def __init__(self, axis, grid, key: str, val):
+    def __init__(self, axis, grid, key: str, val, type: str | None = None):
         self.axis = axis
         self.key = clean_id(str(key))
         if any(x.key == self.key for x in axis.values):
             self.key += f"__{len(axis.values)}"
         self.params = list()
-        if isinstance(val, str):
+        if type == "unifiedaxes":
+            self.title = self.key
+            self.params = {self.key: val}
+            self.description = flatten_axis_names(val[1])
+            self.skip = False
+            self.show = True
+        elif isinstance(val, str):
             halves = val.split('=', maxsplit=1)
             if len(halves) != 2:
                 raise RuntimeError(f"Invalid value '{key}': '{val}': not expected format")
@@ -276,31 +302,37 @@ class AxisValue:
 
 class Axis:
     def build_from_list_str(self, id, grid, list_str):
-        if self.mode.type == "raw string":
-            values_list = self.mode.parse_list(list_str)
+        self.mode_name = clean_name(str(id))
+        self.mode = valid_modes.get(clean_mode(self.mode_name))
+        if self.mode.type == "unifiedaxes":
+            axes_list, values_list = self.mode.parse_list(list_str)
+            self.description = flatten_axis_names(axes_list)
+            for i, value in enumerate(values_list, 1):
+                self.values.append(AxisValue(self, grid, str(i), (axes_list, value), "unifiedaxes"))
+                self.values[-1]
+                pass
+            pass
         else:
             is_split_by_double_pipe = "||" in list_str
             values_list = list_str.split("||" if is_split_by_double_pipe else ",")
-            self.mode_name = clean_name(str(id))
-            self.mode = valid_modes.get(clean_mode(self.mode_name))
             if self.mode is None:
                 raise RuntimeError(f"Invalid axis mode '{self.mode}' from '{id}': unknown mode")
             if self.mode.type == "integer":
                 values_list = expand_numeric_list_ranges(values_list, int)
             elif self.mode.type == "decimal":
                 values_list = expand_numeric_list_ranges(values_list, float)
-        index = 0
-        if self.mode.parse_list is not None:
-            values_list = self.mode.parse_list(values_list)
-        for val in values_list:
-            try:
-                val = str(val).strip()
-                index += 1
-                if is_split_by_double_pipe and val == "" and index == len(values_list):
-                    continue
-                self.values.append(AxisValue(self, grid, str(index), f"{id}={val}"))
-            except Exception as e:
-                raise RuntimeError(f"value '{val}' errored: {e}")
+            index = 0
+            if self.mode.parse_list is not None:
+                values_list = self.mode.parse_list(values_list)
+            for val in values_list:
+                try:
+                    val = str(val).strip()
+                    index += 1
+                    if is_split_by_double_pipe and val == "" and index == len(values_list):
+                        continue
+                    self.values.append(AxisValue(self, grid, str(index), f"{id}={val}"))
+                except Exception as e:
+                    raise RuntimeError(f"value '{val}' errored: {e}")
 
     def __init__(self, grid, id: str, obj):
         self.raw_id = id
