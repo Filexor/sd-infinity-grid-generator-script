@@ -38,7 +38,6 @@ function loadData() {
     document.getElementById('stickyNavigation').checked = rawData.defaults.sticky;
     for (var axis of ['x', 'y', 'x2', 'y2']) {
         if (rawData.defaults[axis] != '') {
-            console.log('find ' + axis + '_' + rawData.defaults[axis]);
             document.getElementById(axis + '_' + rawData.defaults[axis]).click();
         }
     }
@@ -541,6 +540,9 @@ function makeImage() {
     for (var oldImage of holder.getElementsByTagName('img')) {
         oldImage.remove();
     }
+    for (var oldImage of holder.getElementsByTagName('canvas')) {
+        oldImage.remove();
+    }
     document.getElementById('save_image_info').style.display = 'block';
     // Temporary canvas to measure what padding we need
     var canvas = new OffscreenCanvas(256, 256);
@@ -645,11 +647,18 @@ function makeImage() {
         }
     }
     var imageType = $("#makeimage_type :selected").text();
+    try {
     var data = canvas.toDataURL(`image/${imageType}`);
-    canvas.remove();
-    var img = new Image(256, 256);
-    img.src = data;
-    holder.appendChild(img);
+        canvas.remove();
+        var img = new Image(256, 256);
+        img.src = data;
+        holder.appendChild(img);
+    }
+    catch (e) {
+        holder.appendChild(canvas);
+        canvas.style.width = "200px";
+        canvas.style.height = "200px";
+    }
 }
 
 function updateHash() {
