@@ -163,6 +163,20 @@ def flatten_axis_names(axes: list) -> str:
     return "".join(output)
     pass
 
+def get_axis_value_pair_str(axes: list, values: list) -> str:
+    output = []
+    for axis, value in zip(axes, values):
+        output.append(axis)
+        output.append("=")
+        output.append(value)
+        output.append("||")
+        pass
+    if output[-1] == "||":
+        output.pop()
+        pass
+    return "".join(output)
+    pass
+
 ######################### Value Modes #########################
 
 class GridSettingMode:
@@ -270,7 +284,7 @@ class AxisValue:
         if type == "unifiedaxes":
             self.title = self.key
             self.params = {val[0]: val[1:]}
-            self.description = flatten_axis_names(val[1])
+            self.description = get_axis_value_pair_str(val[1], val[2])
             self.skip = False
             self.show = True
         elif isinstance(val, str):

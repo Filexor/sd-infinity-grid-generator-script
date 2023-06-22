@@ -156,13 +156,11 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             if clean_name(ia.children[0]) in [clean_name("Unified Axes")]:
                 if iv is None:
                     oa.append(None)
-                    ov.append([])
                     return (oa, ov)
                     pass
                 _arg = pop(iv)
                 if isinstance(_arg, str):   # iv is elem
                     oa.append(_arg)
-                    ov.append([])
                     return (oa, ov)
                     pass
                 _oa = []
@@ -176,7 +174,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
                 pass
             else:
                 oa.append(ia.children[0])
-                ov.append([])
+                ov.append([None])
                 return (oa, ov)
                 pass
             pass
@@ -184,13 +182,12 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             if clean_name(ia.children[0]) in [clean_name("Unified Axes")]:
                 if len(ia.children) == 0:
                     oa.append(None)
-                    ov.append([])
                     return (oa, ov)
                     pass
                 _output_axes = []
                 _output = []
                 for child in ia.children[1:]:
-                    _output_axes, _output = visit1(child, _output_axes, _output)
+                    _output_axes, _output = visit1(child, iv, _output_axes, _output)
                     pass
                 oa.append(_output_axes)
                 ov.append(_output)
@@ -206,7 +203,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             _output_axes = []
             _output = []
             for child in ia.children:
-                _output_axes, _output = visit1(child, _output_axes, _output)
+                _output_axes, _output = visit1(child, iv, _output_axes, _output)
                 pass
             oa.append(_output_axes)
             ov.append(_output)
@@ -217,7 +214,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
         'Construct value list. Uses bc(broadcast) if value is elem instead of list.'
         if iv is None:
             if isinstance(getattr(ov, "0", ""), str):
-                ov.append(iv)
+                ov.append([iv])
                 pass
             else:
                 for _ov in ov:
@@ -227,7 +224,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             pass
         elif iv.data == "elem":
             if isinstance(getattr(ov, "0", ""), str):
-                ov.append(iv.children[0])
+                ov.append([iv.children[0]])
                 pass
             else:
                 for _ov in ov:
@@ -238,7 +235,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
         else: # iv.data == "list"
             for _iv, _ov in zip(iv.children, ov):
                 if isinstance(getattr(ov, "0", ""), str):
-                    ov.append(iv.children[0])
+                    ov.append([iv.children[0]])
                     pass
                 else:
                     visit2(_iv, _ov)
@@ -246,21 +243,20 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
                 pass
             pass
         pass
-    def flatten(_obj: list[list | str]) -> None:
-        i = 0
-        while len(_obj) > i:
-            if isinstance(_obj[i], list):
-                tmp = _obj[i]
-                if len(tmp) == 0:
-                    i += 1
-                    continue
+    def flatten(_obj: list[list | str]):
+        if _obj is None or isinstance(_obj, str):
+            return _obj
+        else:
+            output = []
+            for item in _obj:
+                if item is None or isinstance(item, str):
+                    output.append(item)
                     pass
-                del _obj[i]
-                _obj.insert(i, tmp)
+                else:
+                    output += flatten(item)
+                    pass
                 pass
-            else:
-                i += 1
-                pass
+            return output
             pass
         pass
 
@@ -268,12 +264,26 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
         tree: lark.tree.Tree = transformer().transform(parser.parse(input))
         output_axes = []
         output = []
-        output_axes, output = visit1(tree.children[0], tree.children[1:], output_axes, output)
-        for child, _output in zip(tree.children[1:], output):
-            visit2(child, _output)
-            flatten(_output)
+        output1 = []
+        output_axes, output1 = visit1(tree.children[0], tree.children[1:], output_axes, output1)
+        output1 = flatten(output1)
+        output.append(output1)
+        for child in tree.children[1:]:
+            output2 = []
+            visit2(child, output2)
+            output2 = flatten(output2)
+            output.append(output2)
             pass
-        flatten(output_axes)
+        output = [list(x) for x in zip(*output)]
+        for i, axis in enumerate(output):
+            for j, item in enumerate(axis):
+                if item is None:
+                    del axis[j]
+                    pass
+                pass
+            pass
+        output = [list(x) for x in zip(*output)]
+        output_axes = flatten(output_axes)
         pass
     except Exception as e:
         print(repr(e))
