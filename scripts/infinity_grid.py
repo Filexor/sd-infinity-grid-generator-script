@@ -133,11 +133,11 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             pass
         @lark.visitors.v_args(tree = True)
         def list_root(self, tree: lark.tree.Tree) -> str | lark.tree.Tree:
-            return lark.tree.Tree(tree.data, tree.children[1:-1:2], tree.meta)
+            return lark.tree.Tree(tree.data, tree.children[1:-1], tree.meta)
             pass
         @lark.visitors.v_args(tree = True)
         def list(self, args: list[str]) -> str:
-            return lark.tree.Tree(tree.data, tree.children[1:-1:2], tree.meta)
+            return lark.tree.Tree(tree.data, tree.children[1:-1], tree.meta)
             pass
         pass
 
@@ -210,7 +210,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
             return (oa, ov)
             pass
         pass
-    def visit2(iv: lark.tree.Tree, ov: list[list] | list[str]) -> None:
+    def visit2(ia: lark.tree.Tree, iv: lark.tree.Tree, ov: list[list] | list[str]) -> None:
         'Construct value list. Uses bc(broadcast) if value is elem instead of list.'
         if iv is None:
             if isinstance(getattr(ov, "0", ""), str):
@@ -218,7 +218,7 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
                 pass
             else:
                 for _ov in ov:
-                    visit2(iv, _ov)
+                    visit2(ia, iv, _ov)
                     pass
                 pass
             pass
@@ -228,17 +228,17 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
                 pass
             else:
                 for _ov in ov:
-                    visit2(iv, _ov)
+                    visit2(ia, iv, _ov)
                     pass
                 pass
             pass
         else: # iv.data == "list"
-            for _iv, _ov in zip(iv.children, ov):
-                if isinstance(getattr(ov, "0", ""), str):
-                    ov.append([iv.children[0]])
+            for _ia, _iv in zip(ia.children, iv.children):
+                if isinstance(getattr(_iv, "0", ""), str):
+                    ov.append([_iv.children[0]])
                     pass
                 else:
-                    visit2(_iv, _ov)
+                    visit2(_ia, _iv, _ov)
                     pass
                 pass
             pass
@@ -266,24 +266,32 @@ def parse_multi_axes_unified(input: str) -> tuple[list[tuple[str, (str | None)]]
         output = []
         output1 = []
         output_axes, output1 = visit1(tree.children[0], tree.children[1:], output_axes, output1)
+        output_axes = flatten(output_axes)
         output1 = flatten(output1)
         output.append(output1)
         for child in tree.children[1:]:
             output2 = []
-            visit2(child, output2)
+            visit2(tree.children[0], child, output2)
             output2 = flatten(output2)
             output.append(output2)
             pass
+        for values in output:
+            values += [None] * max(len(output_axes) - len(values), 0)
+            pass
         output = [list(x) for x in zip(*output)]
-        for i, axis in enumerate(output):
-            for j, item in enumerate(axis):
-                if item is None:
-                    del axis[j]
-                    pass
+        for axis in output:
+            if axis[0] is None:
+                del axis[0]
                 pass
             pass
         output = [list(x) for x in zip(*output)]
-        output_axes = flatten(output_axes)
+        for i, values in enumerate(output):
+            for j, item in enumerate(values):
+                if item is None:
+                    del values[j]
+                    pass
+                pass
+            pass
         pass
     except Exception as e:
         print(repr(e))
@@ -315,7 +323,6 @@ def apply_multi_axes_unified(p:processing.StableDiffusionProcessing, v:tuple[lis
                 pass
         
         core.valid_modes[clean_name(mode)].apply(p, value)
-        pass
     pass
 
 ######################### Addons #########################
