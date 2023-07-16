@@ -9,6 +9,7 @@ function loadData() {
     document.getElementById('x_' + rawData.axes[0].id).click();
     document.getElementById('x2_none').click();
     document.getElementById('y2_none').click();
+    let makegif_axis = document.getElementById('makegif_axis');
     // rawData.ext/title/description
     for (var axis of rawData.axes) {
         // axis.id/title/description
@@ -27,6 +28,7 @@ function loadData() {
         for (var label of ['x2_none', 'y2_none']) {
             document.getElementById(label).addEventListener('click', fillTable);
         }
+        makegif_axis.appendChild(new Option(axis.title, axis.id));
     }
     console.log(`Loaded data for '${rawData.title}'`);
     document.getElementById('autoScaleImages').addEventListener('change', updateScaling);
@@ -192,6 +194,9 @@ window.addEventListener('keydown', function(kbevent) {
 }, true);
 
 function escapeHtml(text) {
+    if (typeof text != 'string') {
+        return text;
+    }
     return text.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
@@ -248,7 +253,7 @@ function setImgPlaceholder(img) {
 }
 
 function optDescribe(isFirst, val) {
-    return isFirst && val != null ? '<span title="' + escapeHtml(val.description) + '"><b>' + val.title + '</b></span><br>' : (val != null ? '<br>' : '');
+    return isFirst && val != null ? '<span title="' + escapeHtml(val.description) + '"><b>' + escapeHtml(val.title) + '</b></span><br>' : (val != null ? '<br>' : '');
 }
 
 function fillTable() {
@@ -276,7 +281,7 @@ function fillTable() {
             if (!canShowVal(xAxis.id, val.key)) {
                 continue;
             }
-            newContent += `<th${(superFirst ? '' : ' class="superaxis_second"')} title="${val.description.replaceAll('"', '&quot;')}">${optDescribe(x2first, x2val)}<b>${val.title}</b></th>`;
+            newContent += `<th${(superFirst ? '' : ' class="superaxis_second"')} title="${val.description.replaceAll('"', '&quot;')}">${optDescribe(x2first, x2val)}<b>${escapeHtml(val.title)}</b></th>`;
             x2first = false;
         }
         superFirst = !superFirst;
@@ -292,7 +297,7 @@ function fillTable() {
             if (!canShowVal(yAxis.id, val.key)) {
                 continue;
             }
-            newContent += `<tr><td class="axis_label_td${(superFirst ? '' : ' superaxis_second')}" title="${escapeHtml(val.description)}">${optDescribe(y2first, y2val)}<b>${val.title}</b></td>`;
+            newContent += `<tr><td class="axis_label_td${(superFirst ? '' : ' superaxis_second')}" title="${escapeHtml(val.description)}">${optDescribe(y2first, y2val)}<b>${escapeHtml(val.title)}</b></td>`;
             y2first = false;
             for (var x2val of (x2Axis == null ? [null] : x2Axis.values)) {
                 if (x2val != null && !canShowVal(x2Axis.id, x2val.key)) {
@@ -455,6 +460,9 @@ function crunchMetadata(parts) {
         return {};
     }
     var initialData = structuredClone(rawData.metadata);
+    if (!initialData) {
+        return {};
+    }
     for (var index = 0; index < parts.length; index++) {
         var part = parts[index];
         var axis = rawData.axes[index];
@@ -648,7 +656,7 @@ function makeImage() {
     }
     var imageType = $("#makeimage_type :selected").text();
     try {
-    var data = canvas.toDataURL(`image/${imageType}`);
+        var data = canvas.toDataURL(`image/${imageType}`);
         canvas.remove();
         var img = new Image(256, 256);
         img.src = data;
@@ -659,6 +667,76 @@ function makeImage() {
         canvas.style.width = "200px";
         canvas.style.height = "200px";
     }
+}
+
+function makeGif() {
+    let holder = document.getElementById('save_image_helper');
+    document.getElementById('save_image_info').style.display = 'block';
+    for (var oldImage of holder.getElementsByTagName('img')) {
+        oldImage.remove();
+    }
+    let axisId = document.getElementById('makegif_axis').value;
+    let sizeMult = parseFloat(document.getElementById('makegif_size').value.replaceAll('x', ''));
+    let speed = parseFloat(document.getElementById('makegif_speed').value.replaceAll('/s', ''));
+    let axis = getAxisById(axisId);
+    let images = [];
+    let imgPath = [];
+    let index = 0;
+    for (let subAxis of rawData.axes) {
+        if (subAxis.id == axisId) {
+            index = imgPath.length;
+            imgPath.push(null);
+        }
+        else {
+            imgPath.push(getSelectedValKey(subAxis));
+        }
+    }
+    for (let val of axis.values) {
+        if (!canShowVal(axis.id, val.key)) {
+            continue;
+        }
+        imgPath[index] = val.key;
+        let actualUrl = imgPath.join('/') + '.' + rawData.ext;
+        images.push(actualUrl);
+    }
+    let encoder = new GIFEncoder();
+    encoder.setRepeat(0);
+    encoder.setDelay(1000 / speed);
+    encoder.start();
+    let image1 = new Image();
+    image1.src = images[0];
+    image1.decode().then(() => {
+        let canvas = document.createElement('canvas');
+        canvas.width = image1.naturalWidth * sizeMult;
+        canvas.height = image1.naturalHeight * sizeMult;
+        ctx = canvas.getContext('2d');
+        ctx.beginPath();
+        let id = 1;
+        let image2 = new Image();
+        let callback = () => {
+            ctx.drawImage(image2, 0, 0, canvas.width, canvas.height);
+            encoder.addFrame(ctx);
+            if (id >= images.length) {
+                encoder.finish();
+                let binary_gif = encoder.stream().getData();
+                let data_url = 'data:image/gif;base64,' + encode64(binary_gif);
+                let animatedImage = document.createElement('img');
+                animatedImage.src = data_url;
+                image1.remove();
+                image2.remove();
+                holder.appendChild(animatedImage);
+            }
+            else {
+                image2 = new Image();
+                image2.src = images[id];
+                id++;
+                image2.decode().then(callback);
+            }
+        };
+        image2.src = images[0];
+        image2.decode().then(callback);
+    });
+
 }
 
 function updateHash() {
@@ -721,6 +799,16 @@ function checkForUpdates() {
     if (!window.lastUpdated) {
         if (updatesWithoutData++ > 2) {
             console.log('Update-checker has no more updates.');
+            for (let img of document.querySelectorAll(`img[data-errored_src]`)) {
+                let target = img.dataset.errored_src;
+                delete img.dataset.errored_src;
+                img.removeAttribute('width');
+                img.removeAttribute('height');
+                img.addEventListener('error', function() {
+                    setImgPlaceholder(img);
+                });
+                img.src = target;
+            }
             return;
         }
     }
@@ -730,7 +818,9 @@ function checkForUpdates() {
             for (let img of document.querySelectorAll(`img[data-errored_src]`)) {
                 if (img.dataset.errored_src.endsWith(url)) {
                     let target = img.dataset.errored_src;
-                    img.dataset.errored_src = null;
+                    delete img.dataset.errored_src;
+                    img.removeAttribute('width');
+                    img.removeAttribute('height');
                     img.src = target;
                 }
             }

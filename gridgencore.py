@@ -33,6 +33,9 @@ webdata_get_base_param_data: callable = None
 
 ######################### Utilities #########################
 
+def escape_html(text: str):
+    return str(text).replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+
 def clean_file_path(fn: str):
     fn = fn.replace('\\', '/')
     while '//' in fn:
@@ -603,7 +606,7 @@ class WebDataBuilder():
         return json.dumps(result)
 
     def radio_button_html(name, id, descrip, label):
-        return f'<input type="radio" class="btn-check" name="{name}" id="{str(id).lower()}" autocomplete="off" checked=""><label class="btn btn-outline-primary" for="{str(id).lower()}" title="{descrip}">{label}</label>\n'
+        return f'<input type="radio" class="btn-check" name="{name}" id="{str(id).lower()}" autocomplete="off" checked=""><label class="btn btn-outline-primary" for="{str(id).lower()}" title="{descrip}">{escape_html(label)}</label>\n'
 
     def axis_bar(label, content):
         return f'<br><div class="btn-group" role="group" aria-label="Basic radio toggle button group">{label}:&nbsp;\n{content}</div>\n'
@@ -622,7 +625,7 @@ class WebDataBuilder():
             try:
                 axis_descrip = clean_for_web(axis.description or '')
                 tr_class = "primary" if primary else "secondary"
-                content += f'<tr class="{tr_class}">\n<td>\n<h4>{axis.title}</h4>\n'
+                content += f'<tr class="{tr_class}">\n<td>\n<h4>{escape_html(axis.title)}</h4>\n'
                 advanced_settings += f'\n<h4>{axis.title}</h4><div class="timer_box">Auto cycle every <input style="width:30em;" autocomplete="off" type="range" min="0" max="360" value="0" class="form-range timer_range" id="range_tablist_{axis.id}"><label class="form-check-label" for="range_tablist_{axis.id}" id="label_range_tablist_{axis.id}">0 seconds</label></div>\nShow value: '
                 axis_class = "axis_table_cell"
                 if len(axis_descrip.strip()) == 0:
@@ -637,8 +640,8 @@ class WebDataBuilder():
                     active = " active" if is_first else ""
                     is_first = False
                     descrip = clean_for_web(val.description or '')
-                    content += f'<li class="nav-item" role="presentation"><a class="nav-link{active}" data-bs-toggle="tab" href="#tab_{axis.id}__{val.key}" id="clicktab_{axis.id}__{val.key}" aria-selected="{selected}" role="tab" title="{val.title}: {descrip}">{val.title}</a></li>\n'
-                    advanced_settings += f'&nbsp;<input class="form-check-input" type="checkbox" autocomplete="off" id="showval_{axis.id}__{val.key}" checked="true" onchange="javascript:toggleShowVal(\'{axis.id}\', \'{val.key}\')"> <label class="form-check-label" for="showval_{axis.id}__{val.key}" title="Uncheck this to hide \'{val.title}\' from the page.">{val.title}</label>'
+                    content += f'<li class="nav-item" role="presentation"><a class="nav-link{active}" data-bs-toggle="tab" href="#tab_{axis.id}__{val.key}" id="clicktab_{axis.id}__{val.key}" aria-selected="{selected}" role="tab" title="{escape_html(val.title)}: {descrip}">{escape_html(val.title)}</a></li>\n'
+                    advanced_settings += f'&nbsp;<input class="form-check-input" type="checkbox" autocomplete="off" id="showval_{axis.id}__{val.key}" checked="true" onchange="javascript:toggleShowVal(\'{axis.id}\', \'{val.key}\')"> <label class="form-check-label" for="showval_{axis.id}__{val.key}" title="Uncheck this to hide \'{escape_html(val.title)}\' from the page.">{escape_html(val.title)}</label>'
                 advanced_settings += f'&nbsp;&nbsp;<button class="submit" onclick="javascript:toggleShowAllAxis(\'{axis.id}\')">Toggle All</button>'
                 content += '</ul>\n<div class="tab-content">\n'
                 is_first = axis.default is None
@@ -678,7 +681,7 @@ class WebDataBuilder():
             f.write("rawData = " + json)
         with open(path + "/config.yml", 'w') as f:
             yaml.dump(yaml_content, f, sort_keys=False, default_flow_style=False, width=1000)
-        for f in ["bootstrap.min.css", "bootstrap.bundle.min.js", "proc.js", "jquery.min.js", "styles.css", "placeholder.png"] + EXTRA_ASSETS:
+        for f in ["bootstrap.min.css", "jsgif.js", "bootstrap.bundle.min.js", "proc.js", "jquery.min.js", "styles.css", "placeholder.png"] + EXTRA_ASSETS:
             shutil.copyfile(ASSET_DIR + "/" + f, path + "/" + f)
         html = WebDataBuilder.build_html(grid)
         with open(path + "/index.html", 'w') as f:
